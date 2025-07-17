@@ -1,0 +1,14 @@
+{
+  "name": "cc1737b1c5d797bd",
+  "main": "cc1737b1c5d797bd@92.js",
+  "version": "92.0.0",
+  "homepage": "https://observablehq.com/d/cc1737b1c5d797bd",
+  "author": {
+    "name": "Court Records",
+    "url": "https://observablehq.com/@court-records"
+  },
+  "type": "module",
+  "peerDependencies": {
+    "@observablehq/runtime": "4 - 5"
+  }
+}
