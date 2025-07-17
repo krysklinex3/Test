@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circle Packing Chart</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Century Gothic", sans-serif;
+            background: #000000;
+            overflow: hidden;
+        }
+        #focus-label {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="focus-label">Root</div>
+    <div id="chart"></div>
+
+    <script>
+        // Sample data - replace with your actual data
+        const data = {
+            name: "Root",
+            children: [
+                {
+                    name: "Category A",
+                    children: [
+                        { name: "Item 1", value: 100, url: "https://example.com/1" },
+                        { name: "Item 2", value: 80, url: "https://example.com/2" },
+                        { name: "Item 3", value: 60, url: "https://example.com/3" }
+                    ]
+                },
+                {
+                    name: "Category B",
+                    children: [
+                        { name: "Item 4", value: 120, url: "https://example.com/4" },
+                        { name: "Item 5", value: 90, url: "https://example.com/5" }
+                    ]
+                },
+                {
+                    name: "Category C",
+                    children: [
+                        { name: "Item 6", value: 70, url: "https://example.com/6" },
+                        { name: "Item 7", value: 110, url: "https://example.com/7" },
+                        { name: "Item 8", value: 85, url: "https://example.com/8" }
+                    ]
+                }
+            ]
+        };
+
+        function createChart() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            // Clear any existing chart
+            d3.select("#chart").selectAll("*").remove();
+
+            const root = d3.hierarchy(data)
+                .sum(d => d.value || 0)  // Fixed typo: was 'valaue'
+                .sort((a, b) => b.value - a.value);
+
+            const myColors = ["#151515", "#2A2A2A", "#3F3F3F", "#545454", "#6A6A6A"];
+            const color = d3.scaleOrdinal()
+                .domain(d3.range(root.height + 1))
+                .range(myColors);
+
+            const packLayout = d3.pack()
+                .size([width, height])
+                .padding(3);
+
+            packLayout(root);
+
+            // Adjust single child nodes
+            root.descendants().forEach(d => {
+                if (d.parent && d.parent.children && d.parent.children.length === 1) {
+                    d.r = d.r * 0.25;
+                }
+            });
+
+            let focus = root;
+            let view;
+
+            const svg = d3.select("#chart")
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .style("font-family", "Century Gothic, sans-serif")
+                .style("background", "#000000")
+                .attr("viewBox", `0 0 ${width} ${height}`);
+
+            const bubblesLayer = svg.append("g");
+            const labelLayer = svg.append("g");
+
+            // Function to wrap text within a circle
+            function wrapText(text, radius, fontSize) {
+                if (text.includes('|')) {
+                    const manualLines = text.split('|').map(line => line.trim());
+                    
+                    const tempText = svg.append("text")
+                        .style("font-size", fontSize + "px")
+                        .style("font-family", "Century Gothic, sans-serif")
+                        .style("visibility", "hidden");
+                    
+                    const maxWidth = radius * 1.6;
+                    let finalFontSize = fontSize;
+                    
+                    let needsResize = false;
+                    for (let line of manualLines) {
+                        tempText.text(line);
+                        if (tempText.node().getComputedTextLength() > maxWidth) {
+                            needsResize = true;
+                            break;
+                        }
+                    }
+                    
+                    if (needsResize) {
+                        finalFontSize = Math.max(10, fontSize * 0.9);
+                        tempText.remove();
+                        if (finalFontSize < fontSize) {
+                            return wrapText(text, radius, finalFontSize);
+                        }
+                    }
+                    
+                    tempText.remove();
+                    return { lines: manualLines, fontSize: finalFontSize };
+                }
+                
+                const words = text.split(/\s+/);
+                const lines = [];
+                let line = [];
+                
+                const tempText = svg.append("text")
+                    .style("font-size", fontSize + "px")
+                    .style("font-family", "Century Gothic, sans-serif")
+                    .style("visibility", "hidden");
+                
+                const maxWidth = radius * 1.6;
+                
+                for (let i = 0; i < words.length; i++) {
+                    const testLine = line.concat(words[i]);
+                    tempText.text(testLine.join(" "));
+                    const testWidth = tempText.node().getComputedTextLength();
+                    
+                    if (testWidth > maxWidth && line.length > 0) {
+                        lines.push(line.join(" "));
+                        line = [words[i]];
+                    } else {
+                        line.push(words[i]);
+                    }
+                }
+                
+                if (line.length > 0) {
+                    lines.push(line.join(" "));
+                }
+                
+                tempText.remove();
+                
+                const lineHeight = fontSize * 1.2;
+                const totalHeight = lines.length * lineHeight;
+                
+                if (totalHeight > radius * 1.8) {
+                    const newFontSize = Math.max(10, fontSize * 0.9);
+                    if (newFontSize < fontSize) {
+                        return wrapText(text, radius, newFontSize);
+                    }
+                }
+                
+                return { lines, fontSize };
+            }
+
+            const node = bubblesLayer.selectAll("g")
+                .data(root.descendants())
+                .join("g")
+                .attr("transform", d => `translate(${d.x},${d.y})`)
+                .style("cursor", "pointer")
+                .on("click", function(event, d) {
+                    if (d.data.url) {
+                        window.open(d.data.url, '_blank');
+                        event.stopPropagation();
+                    } else if (focus !== d) {
+                        zoom(d);
+                        event.stopPropagation();
+                    }
+                });
+
+            node.append("circle")
+                .attr("r", d => d.r)
+                .attr("fill", d => color(d.depth))
+                .attr("stroke", "#555")
+                .attr("stroke-width", 1);
+
+            const nodeLabels = labelLayer.selectAll("g.node-label-group")
+                .data(root.descendants())
+                .join("g")
+                .attr("class", "node-label-group")
+                .attr("transform", d => `translate(${d.x},${d.y})`);
+
+            nodeLabels.each(function(d) {
+                const baseFontSize = d.children ? 20 : 14;
+                const wrappedText = wrapText(d.data.name, d.r, baseFontSize);
+                
+                if (!d.children && d.data.url) {
+                    const textGroup = d3.select(this)
+                        .append("g")
+                        .attr("class", "node-label")
+                        .style("cursor", "pointer");
+                    
+                    wrappedText.lines.forEach((line, i) => {
+                        textGroup.append("text")
+                            .attr("text-anchor", "middle")
+                            .attr("dy", `${(i - (wrappedText.lines.length - 1) / 2) * wrappedText.fontSize * 1.2}px`)
+                            .style("font-size", wrappedText.fontSize + "px")
+                            .style("font-family", "Century Gothic, sans-serif")
+                            .style("fill", "lightblue")
+                            .text(line);
+                    });
+                } else {
+                    const textGroup = d3.select(this)
+                        .append("g")
+                        .attr("class", "node-label");
+                    
+                    wrappedText.lines.forEach((line, i) => {
+                        textGroup.append("text")
+                            .attr("text-anchor", "middle")
+                            .attr("dy", `${(i - (wrappedText.lines.length - 1) / 2) * wrappedText.fontSize * 1.2}px`)
+                            .style("font-size", wrappedText.fontSize + "px")
+                            .style("font-family", "Century Gothic, sans-serif")
+                            .style("fill", "white")
+                            .text(line);
+                    });
+                }
+            });
+
+            svg.on("click", () => zoom(root));
+
+            function zoom(d) {
+                focus = d;
+                document.getElementById("focus-label").textContent = focus.data.name;
+                
+                const transition = svg.transition()
+                    .duration(750)
+                    .tween("zoom", () => {
+                        const i = d3.interpolateZoom(view, [focus.x, focus.y, focus.r * 2]);
+                        return t => zoomTo(i(t));
+                    });
+            }
+
+            function zoomTo(v) {
+                view = v;
+                const k = width / v[2];
+
+                node.attr("transform", d =>
+                    `translate(${(d.x - v[0]) * k + width / 2},${(d.y - v[1]) * k + height / 2})`
+                );
+                node.selectAll("circle").attr("r", d => d.r * k);
+
+                nodeLabels.attr("transform", d =>
+                    `translate(${(d.x - v[0]) * k + width / 2},${(d.y - v[1]) * k + height / 2})`
+                );
+
+                nodeLabels.selectAll(".node-label")
+                    .style("display", d => {
+                        if (focus === root) {
+                            return d.parent === root ? "inline" : "none";
+                        } else {
+                            return d.parent === focus ? "inline" : "none";
+                        }
+                    });
+
+                nodeLabels.selectAll(".node-label text")
+                    .style("font-size", function(d) {
+                        const isChild = d.parent === focus;
+                        const isLeaf = !d.children;
+                        
+                        if (isChild) {
+                            return isLeaf ? "16px" : "24px";
+                        } else {
+                            const baseSize = isLeaf ? 16 : 24;
+                            return Math.max(8, baseSize * k * 0.3) + "px";
+                        }
+                    });
+            }
+
+            zoomTo([root.x, root.y, root.r * 2]);
+        }
+
+        // Create the chart
+        createChart();
+
+        // Recreate on window resize
+        window.addEventListener('resize', createChart);
+    </script>
+</body>
+</html>
